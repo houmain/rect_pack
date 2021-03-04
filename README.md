@@ -1,12 +1,14 @@
-# pack_rect
+# Multi-sheet rectangle packing
 
-A small library for packing rectangles to one or more sprite sheets/atlases with optional constraints.
+A library for packing rectangles to one or more sprite sheets/atlases with optional constraints.
 
-It is part of the [spright](https://github.com/houmain/spright) project and utilizing Sean T. Barrett's [Skyline](https://github.com/nothings/stb) and  Jukka Jylänki's [MaxRects](https://github.com/juj/RectangleBinPack) packing algorithm implementations.
+It is part of the [spright](https://github.com/houmain/spright) project and utilizing [Sean T. Barrett's Skyline](https://github.com/nothings/stb) and  [Jukka Jylänki's MaxRects](https://github.com/juj/RectangleBinPack) packing algorithm implementations.
 
-Simply pass the desired settings and rectangle sizes to the _pack_ function. It will return one or more sheets containing the rectangles' positions. The id can be used to correlate in- and output (there is no rectangle for sizes which did not fit).
+Simply pass your sheet constraints and the rectangle sizes to the _pack_ function. It will return one or more sheets with rectangle positions. The _id_ can be used to correlate in- and output (there are no rectangles for sizes which did not fit).
 
-## Header
+For now the header may serve as documentation:
+
+## rect_pack.h
 
 ```cpp
 #include <vector>
