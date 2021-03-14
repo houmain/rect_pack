@@ -4,6 +4,7 @@
 #include "MaxRectsBinPack.h"
 #include "stb_rect_pack.h"
 #include <optional>
+#include <algorithm>
 #include <cmath>
 #include <cassert>
 
