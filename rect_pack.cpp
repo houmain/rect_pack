@@ -422,7 +422,7 @@ namespace {
       const std::optional<Run>& best_run, const std::vector<Size>& sizes) {
     copy_vector(rbp.rect_sizes, rbp.run_rect_sizes);
     auto cancelled = false;
-    while (!cancelled && !rbp.run_rect_sizes.empty()) {
+    while (!rbp.run_rect_sizes.empty()) {
       rbp.rects.clear();
       rbp.max_rects.Init(run.width, run.height, settings.allow_rotate);
       rbp.max_rects.Insert(rbp.run_rect_sizes, rbp.rects, to_rbp_method(run.method));
@@ -435,7 +435,7 @@ namespace {
 
       if (best_run && !is_better_than(run, *best_run)) {
         cancelled = true;
-        continue;
+        break;
       }
 
       sheet.rects.reserve(rbp.rects.size());
@@ -445,6 +445,8 @@ namespace {
           size.id,
           rbp_rect.x + settings.border_padding,
           rbp_rect.y + settings.border_padding,
+          rbp_rect.width,
+          rbp_rect.height,
           (rbp_rect.width != size.width)
         });
       }
@@ -459,13 +461,19 @@ namespace {
     std::vector<stbrp_rect> run_rects;
   };
 
-  StbState init_stb_state(const std::vector<Size>& sizes) {
+  StbState init_stb_state(const Settings& settings, const std::vector<Size>& sizes) {
     auto stb = StbState{ };
     stb.rects.reserve(sizes.size());
     stb.run_rects.reserve(sizes.size());
     for (const auto& size : sizes)
       stb.rects.push_back({ static_cast<int>(stb.rects.size()),
         size.width, size.height, 0, 0, false });
+
+    if (settings.allow_rotate)
+      for (auto& rect : stb.rects)
+        if (rect.w > settings.max_width || rect.h > settings.max_height)
+          std::swap(rect.w, rect.h);
+
     return stb;
   }
 
@@ -475,7 +483,7 @@ namespace {
     stb.nodes.resize(std::max(stb.nodes.size(), static_cast<size_t>(run.width)));
 
     auto cancelled = false;
-    while (!cancelled && !stb.run_rects.empty()) {
+    while (!stb.run_rects.empty()) {
       stbrp_init_target(&stb.context, run.width, run.height,
         stb.nodes.data(), static_cast<int>(stb.nodes.size()));
       stbrp_setup_heuristic(&stb.context, to_stb_method(run.method));
@@ -512,9 +520,10 @@ namespace {
       apply_padding(settings, width, height, false);
       run.total_area += width * height;
 
-      if (best_run && !is_better_than(run, *best_run)) {
+      if (sheet.rects.empty() ||
+          (best_run && !is_better_than(run, *best_run))) {
         cancelled = true;
-        continue;
+        break;
       }
     }
     return !cancelled;
@@ -541,7 +550,7 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
   if (settings.method == Method::Best ||
       settings.method == Method::Best_Skyline ||
       is_stb_method(settings.method))
-    stb_state.emplace(init_stb_state(sizes));
+    stb_state.emplace(init_stb_state(settings, sizes));
 
   auto rbp_state = std::optional<RbpState>();
   if (settings.method == Method::Best ||
@@ -559,7 +568,8 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
     if (succeeded && (!best_run || is_better_than(run, *best_run)))
       best_run = std::move(run);
 
-    if (!optimize_run_settings(optimization_state, settings, *best_run))
+    if (!best_run.has_value() ||
+        !optimize_run_settings(optimization_state, settings, *best_run))
       break;
   }
 
