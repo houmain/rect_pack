@@ -11,8 +11,6 @@
 namespace rect_pack {
 
 namespace {
-  const auto first_method = Method::Skyline_BottomLeft;
-  const auto last_method = Method::MaxRects_ContactPointRule;
   const auto first_Skyline_method = Method::Skyline_BottomLeft;
   const auto last_Skyline_method = Method::Skyline_BestFit;
   const auto first_MaxRects_method = Method::MaxRects_BestShortSideFit;
@@ -60,62 +58,42 @@ namespace {
       static_cast<int>(method) - static_cast<int>(first_MaxRects_method));
   }
 
-  Method advance_method(Method method) {
-    return (method == last_method ? first_method :
-      static_cast<Method>(static_cast<int>(method) + 1));
-  }
-
-  Method advance_Skyline_method(Method method) {
-    assert(is_stb_method(method));
-    return (method == last_Skyline_method ? first_Skyline_method :
-      static_cast<Method>(static_cast<int>(method) + 1));
-  }
-
-  Method advance_MaxRects_method(Method method) {
-    assert(is_rbp_method(method));
-    if (method == last_MaxRects_method)
-      return first_MaxRects_method;
-    return static_cast<Method>(static_cast<int>(method) + 1);
-  }
-
-  Method get_concrete_method(Method method) {
-    switch (method) {
-      case Method::Best:
-      case Method::Best_Skyline:
-        return first_Skyline_method;
-
-      case Method::Best_MaxRects:
-        return first_MaxRects_method;
-
-      default:
-        return method;
-    }
-  }
-
-  bool advance(Method& method, Method settings_method, Method first_method) {
-    const auto previous = method;
+  std::vector<Method> get_concrete_methods(Method settings_method) {
+    auto methods = std::vector<Method>();
+    const auto add_skyline_methods = [&]() {
+      methods.insert(end(methods), {
+        Method::Skyline_BottomLeft,
+        Method::Skyline_BestFit
+      });
+    };
+    const auto add_maxrect_methods = [&]() {
+      methods.insert(end(methods), {
+        Method::MaxRects_BestShortSideFit,
+        Method::MaxRects_BestLongSideFit,
+        Method::MaxRects_BestAreaFit,
+        Method::MaxRects_BottomLeftRule,
+        Method::MaxRects_ContactPointRule,
+      });
+    };
     switch (settings_method) {
       case Method::Best:
-        method = advance_method(method);
-
-        // do not try costly contact point rule
-        if (method != first_method &&
-            method == Method::MaxRects_ContactPointRule)
-          method = advance_method(method);
+        add_skyline_methods();
+        add_maxrect_methods();
         break;
 
       case Method::Best_Skyline:
-        method = advance_Skyline_method(method);
+        add_skyline_methods();
         break;
 
       case Method::Best_MaxRects:
-        method = advance_MaxRects_method(method);
+        add_maxrect_methods();
         break;
 
       default:
+        methods.push_back(settings_method);
         break;
     }
-    return (method != previous && method != first_method);
+    return methods;
   }
 
   bool can_fit(const Settings& settings, int width, int height) {
@@ -155,25 +133,26 @@ namespace {
         it = sizes.erase(it);
       }
       else {
-        max_rect_width = std::max(max_rect_width, it->width);
-        max_rect_height = std::max(max_rect_height, it->height);
+        if (settings.allow_rotate && it->height > it->width) {
+          max_rect_width = std::max(max_rect_width, it->height);
+          max_rect_height = std::max(max_rect_height, it->width);
+        }
+        else {
+          max_rect_width = std::max(max_rect_width, it->width);
+          max_rect_height = std::max(max_rect_height, it->height);
+        }
         ++it;
       }
 
-    if (settings.allow_rotate)
-      max_rect_width = max_rect_height = std::min(max_rect_width, max_rect_height);
     settings.min_width = std::max(settings.min_width, max_rect_width);
     settings.min_height = std::max(settings.min_height, max_rect_height);
     return true;
   }
 
-  struct RunSettings {
+  struct Run {
+    Method method;
     int width;
     int height;
-    Method method;
-  };
-
-  struct Run : RunSettings {
     std::vector<Sheet> sheets;
     int total_area;
   };
@@ -243,9 +222,8 @@ namespace {
     return { width, height };
   }
 
-  RunSettings get_initial_run_settings(const Settings& settings, int perfect_area) {
-    const auto [width, height] = get_run_size(settings, perfect_area * 5 / 4);
-    return { width, height, get_concrete_method(settings.method) };
+  std::pair<int, int> get_initial_run_size(const Settings& settings, int perfect_area) {
+    return get_run_size(settings, perfect_area * 5 / 4);
   }
 
   enum class OptimizationStage {
@@ -261,9 +239,9 @@ namespace {
 
   struct OptimizationState {
     const int perfect_area;
-    RunSettings settings;
+    int width;
+    int height;
     OptimizationStage stage;
-    Method first_method;
     int iteration;
   };
 
@@ -278,7 +256,6 @@ namespace {
   bool optimize_stage(OptimizationState& state,
       const Settings& pack_settings, const Run& best_run) {
 
-    auto& run = state.settings;
     switch (state.stage) {
       case OptimizationStage::first_run:
       case OptimizationStage::end:
@@ -292,31 +269,31 @@ namespace {
         const auto& last_sheet = best_run.sheets.back();
         auto area = last_sheet.width * last_sheet.height;
         for (auto i = 0; area > 0; ++i) {
-          if (run.width == pack_settings.max_width &&
-              run.height == pack_settings.max_height)
+          if (state.width == pack_settings.max_width &&
+              state.height == pack_settings.max_height)
             break;
-          if (run.height == pack_settings.max_height ||
-              (run.width < pack_settings.max_width && i % 2)) {
-            ++run.width;
-            area -= run.height;
+          if (state.height == pack_settings.max_height ||
+              (state.width < pack_settings.max_width && i % 2)) {
+            ++state.width;
+            area -= state.height;
           }
           else {
-            ++run.height;
-            area -= run.width;
+            ++state.height;
+            area -= state.width;
           }
         }
         return true;
       }
 
       case OptimizationStage::shrink_square: {
-        if (run.width != best_run.width ||
-            run.height != best_run.height ||
+        if (state.width != best_run.width ||
+            state.height != best_run.height ||
             state.iteration > 5)
           return false;
 
         const auto [width, height] = get_run_size(pack_settings, state.perfect_area);
-        run.width = (run.width + width) / 2;
-        run.height = (run.height + height) / 2;
+        state.width = (state.width + width) / 2;
+        state.height = (state.height + height) / 2;
         return true;
       }
 
@@ -324,36 +301,27 @@ namespace {
       case OptimizationStage::shrink_height_fast:
       case OptimizationStage::shrink_width_slow:
       case OptimizationStage::shrink_height_slow: {
-        if (run.width != best_run.width ||
-            run.height != best_run.height ||
-            state.iteration > 5) {
-
-          // when no method is set, retry with each method
-          if (!advance(run.method, pack_settings.method, state.first_method))
-            return false;
-
-          run.width = best_run.width;
-          run.height = best_run.height;
-        }
+        if (state.iteration > 5)
+          return false;
 
         const auto [width, height] = get_run_size(pack_settings, state.perfect_area);
         switch (state.stage) {
           default:
           case OptimizationStage::shrink_width_fast:
-            if (run.width > width + 4)
-              run.width = (run.width + width) / 2;
+            if (state.width > width + 4)
+              state.width = (state.width + width) / 2;
             break;
           case OptimizationStage::shrink_height_fast:
-            if (run.height > height + 4)
-              run.height = (run.height + height) / 2;
+            if (state.height > height + 4)
+              state.height = (state.height + height) / 2;
             break;
           case OptimizationStage::shrink_width_slow:
-            if (run.width > width)
-              --run.width;
+            if (state.width > width)
+              --state.width;
             break;
           case OptimizationStage::shrink_height_slow:
-            if (run.height > height)
-              --run.height;
+            if (state.height > height)
+              --state.height;
             break;
         }
         return true;
@@ -369,10 +337,8 @@ namespace {
     for (;;) {
       if (!optimize_stage(state, pack_settings, best_run))
         if (advance(state.stage)) {
-          state.settings.width = best_run.width;
-          state.settings.height = best_run.height;
-          state.settings.method = best_run.method;
-          state.first_method = best_run.method;
+          state.width = best_run.width;
+          state.height = best_run.height;
           state.iteration = 0;
           continue;
         }
@@ -382,14 +348,13 @@ namespace {
 
       ++state.iteration;
 
-      auto width = state.settings.width;
-      auto height = state.settings.height;
+      auto width = state.width;
+      auto height = state.height;
       correct_size(pack_settings, width, height);
-      if (width != previous_state.settings.width ||
-          height != previous_state.settings.height ||
-          state.settings.method != previous_state.settings.method) {
-        state.settings.width = width;
-        state.settings.height = height;
+      if (width != previous_state.width ||
+          height != previous_state.height) {
+        state.width = width;
+        state.height = height;
         return true;
       }
     }
@@ -537,15 +502,6 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
   if (sizes.empty())
     return { };
 
-  auto best_run = std::optional<Run>{ };
-  const auto perfect_area = get_perfect_area(sizes);
-  auto optimization_state = OptimizationState{
-    .perfect_area = perfect_area,
-    .settings = get_initial_run_settings(settings, perfect_area),
-    .stage = OptimizationStage::first_run,
-    .iteration = 0,
-  };
-
   auto stb_state = std::optional<StbState>();
   if (settings.method == Method::Best ||
       settings.method == Method::Best_Skyline ||
@@ -558,25 +514,45 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
       is_rbp_method(settings.method))
     rbp_state.emplace(init_rbp_state(sizes));
 
-  for (;;) {
-    auto run = Run{ optimization_state.settings, { }, 0 };
+  const auto perfect_area = get_perfect_area(sizes);
+  const auto [initial_width, initial_height] = get_initial_run_size(settings, perfect_area);
 
-    const auto succeeded = is_rbp_method(run.method) ?
-      run_rbp_method(*rbp_state, settings, run, best_run, sizes) :
-      run_stb_method(*stb_state, settings, run, best_run, sizes);
+  auto total_best_run = std::optional<Run>{ };
+  const auto methods = get_concrete_methods(settings.method);
+  for (const auto& method : methods) {
+    auto best_run = std::optional<Run>{ };
+    auto state = OptimizationState{
+      .perfect_area = perfect_area,
+      .width = initial_width,
+      .height = initial_height,
+      .stage = OptimizationStage::first_run,
+      .iteration = 0,
+    };
+    for (;;) {
+      auto run = Run{ method, state.width, state.height, { }, 0 };
 
-    if (succeeded && (!best_run || is_better_than(run, *best_run)))
-      best_run = std::move(run);
+      const auto succeeded = is_rbp_method(run.method) ?
+        run_rbp_method(*rbp_state, settings, run, best_run, sizes) :
+        run_stb_method(*stb_state, settings, run, best_run, sizes);
 
-    if (!best_run.has_value() ||
-        !optimize_run_settings(optimization_state, settings, *best_run))
-      break;
+      if (succeeded && (!best_run || is_better_than(run, *best_run)))
+        best_run = std::move(run);
+
+      if (!best_run.has_value() ||
+          !optimize_run_settings(state, settings, *best_run))
+        break;
+    }
+    if (best_run && (!total_best_run || is_better_than(*best_run, *total_best_run)))
+      total_best_run = std::move(best_run);
   }
 
-  if (settings.max_sheets && std::cmp_less(settings.max_sheets, best_run->sheets.size()))
-    best_run->sheets.resize(static_cast<size_t>(settings.max_sheets));
+  if (!total_best_run)
+    return { };
 
-  return std::move(best_run->sheets);
+  if (settings.max_sheets && std::cmp_less(settings.max_sheets, total_best_run->sheets.size()))
+    total_best_run->sheets.resize(static_cast<size_t>(settings.max_sheets));
+
+  return std::move(total_best_run->sheets);
 }
 
 } // namespace
