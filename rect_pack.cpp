@@ -380,6 +380,9 @@ namespace {
     for (const auto& size : sizes)
       rbp.rect_sizes.push_back({ size.width, size.height,
         static_cast<int>(rbp.rect_sizes.size()) });
+
+    // to preserve order of identical rects (RBP_REVERSE_ORDER is also defined)
+    std::reverse(begin(rbp.rect_sizes), end(rbp.rect_sizes));
     return rbp;
   }
 

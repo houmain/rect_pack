@@ -17,6 +17,7 @@
 #include "MaxRectsBinPack.h"
 
 #define RBP_ENABLE_OPTIMIZATIONS
+#define RBP_REVERSE_ORDER
 
 namespace rbp {
 
@@ -117,7 +118,11 @@ void MaxRectsBinPack::Insert(std::vector<RectSize> &rects, std::vector<Rect> &ds
 		int bestRectIndex = -1;
 		Rect bestNode;
 
+#if defined(RBP_REVERSE_ORDER)
+		for(int i = static_cast<int>(rects.size()) - 1; i >= 0; --i)
+#else
 		for(size_t i = 0; i < rects.size(); ++i)
+#endif
 		{
 			int score1;
 			int score2;
@@ -210,13 +215,13 @@ float MaxRectsBinPack::Occupancy() const
 
 std::pair<int, int> MaxRectsBinPack::BottomRight() const
 {
-  int x = 0;
-  int y = 0;
-  for(size_t i = 0; i < usedRectangles.size(); ++i) {
-    x = std::max(x, usedRectangles[i].x + usedRectangles[i].width);
-    y = std::max(y, usedRectangles[i].y + usedRectangles[i].height);
+	int x = 0;
+	int y = 0;
+	for(size_t i = 0; i < usedRectangles.size(); ++i) {
+		x = std::max(x, usedRectangles[i].x + usedRectangles[i].width);
+		y = std::max(y, usedRectangles[i].y + usedRectangles[i].height);
   }
-  return { x, y };
+	return { x, y };
 }
 
 Rect MaxRectsBinPack::FindPositionForNewNodeBottomLeft(int width, int height, int &bestY, int &bestX) const
