@@ -129,7 +129,9 @@ namespace {
     auto max_rect_width = 0;
     auto max_rect_height = 0;
     for (auto it = begin(sizes); it != end(sizes); )
-      if (!can_fit(settings, it->width, it->height)) {
+      if (it->width <= 0 ||
+          it->height <= 0 ||
+          !can_fit(settings, it->width, it->height)) {
         it = sizes.erase(it);
       }
       else {
