@@ -119,8 +119,8 @@ namespace {
       settings.max_width = size_limit;
     if (settings.max_height <= 0 || settings.max_height > size_limit)
       settings.max_height = size_limit;
-    std::clamp(settings.min_width, 0, settings.max_width);
-    std::clamp(settings.min_height, 0, settings.max_height);
+    settings.min_width = std::clamp(settings.min_width, 0, settings.max_width);
+    settings.min_height = std::clamp(settings.min_height, 0, settings.max_height);
 
     // immediately apply padding and over allocation, only relevant for power-of-two and alignment constraint
     apply_padding(settings, settings.min_width, settings.min_height, true);
