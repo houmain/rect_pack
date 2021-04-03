@@ -72,7 +72,8 @@ namespace {
         Method::MaxRects_BestLongSideFit,
         Method::MaxRects_BestAreaFit,
         Method::MaxRects_BottomLeftRule,
-        Method::MaxRects_ContactPointRule,
+        // do not automatically try costy contact point rule
+        // Method::MaxRects_ContactPointRule,
       });
     };
     switch (settings_method) {
@@ -194,11 +195,17 @@ namespace {
     apply_padding(settings, width, height, true);
   }
 
-  bool is_better_than(const Run& a, const Run& b) {
-    if (a.sheets.size() < b.sheets.size())
-      return true;
-    if (b.sheets.size() < a.sheets.size())
-      return false;
+  bool is_better_than(const Run& a, const Run& b, bool a_incomplete = false) {
+    if (a_incomplete) {
+      if (b.sheets.size() <= a.sheets.size())
+        return false;
+    }
+    else {
+      if (a.sheets.size() < b.sheets.size())
+        return true;
+      if (b.sheets.size() < a.sheets.size())
+        return false;
+    }
     return (a.total_area < b.total_area);
   }
 
@@ -399,11 +406,13 @@ namespace {
       auto [width, height] = rbp.max_rects.BottomRight();
 
       correct_size(settings, width, height);
-      apply_padding(settings, width, height, false);
-      auto& sheet = run.sheets.emplace_back(Sheet{ width, height, { } });
       run.total_area += width * height;
 
-      if (best_run && !is_better_than(run, *best_run)) {
+      apply_padding(settings, width, height, false);
+      auto& sheet = run.sheets.emplace_back(Sheet{ width, height, { } });
+
+      const auto done = rbp.run_rect_sizes.empty();
+      if (best_run && !is_better_than(run, *best_run, !done)) {
         cancelled = true;
         break;
       }
@@ -462,11 +471,10 @@ namespace {
         (stbrp_pack_rects(&stb.context, stb.run_rects.data(),
           static_cast<int>(stb.run_rects.size())) == 1);
 
-      auto& sheet = run.sheets.emplace_back();
-      sheet.rects.reserve(stb.run_rects.size());
-
-      auto& width = sheet.width;
-      auto& height = sheet.height;
+      auto width = 0;
+      auto height = 0;
+      auto rects = std::vector<Rect>();
+      rects.reserve(stb.run_rects.size());
       stb.run_rects.erase(std::remove_if(begin(stb.run_rects), end(stb.run_rects),
         [&](const stbrp_rect& stb_rect) {
           if (!stb_rect.was_packed)
@@ -476,7 +484,7 @@ namespace {
           height = std::max(height, stb_rect.y + stb_rect.h);
 
           const auto& size = sizes[static_cast<size_t>(stb_rect.id)];
-          sheet.rects.push_back({
+          rects.push_back({
             size.id,
             stb_rect.x + settings.border_padding,
             stb_rect.y + settings.border_padding,
@@ -487,11 +495,13 @@ namespace {
         }), end(stb.run_rects));
 
       correct_size(settings, width, height);
-      apply_padding(settings, width, height, false);
       run.total_area += width * height;
 
+      apply_padding(settings, width, height, false);
+      const auto& sheet = run.sheets.emplace_back(Sheet{ width, height, std::move(rects) });
+      const auto done = stb.run_rects.empty();
       if (sheet.rects.empty() ||
-          (best_run && !is_better_than(run, *best_run))) {
+          (best_run && !is_better_than(run, *best_run, !done))) {
         cancelled = true;
         break;
       }
@@ -520,6 +530,7 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
     rbp_state.emplace(init_rbp_state(sizes));
 
   const auto perfect_area = get_perfect_area(sizes);
+  const auto target_area = perfect_area + perfect_area / 100;
   const auto [initial_width, initial_height] = get_initial_run_size(settings, perfect_area);
 
   auto total_best_run = std::optional<Run>{ };
@@ -534,8 +545,12 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
       .iteration = 0,
     };
     for (;;) {
-      auto run = Run{ method, state.width, state.height, { }, 0 };
+      if (best_run.has_value() &&
+          best_run->sheets.size() == 1 &&
+          best_run->total_area <= target_area)
+        break;
 
+      auto run = Run{ method, state.width, state.height, { }, 0 };
       const auto succeeded = is_rbp_method(run.method) ?
         run_rbp_method(*rbp_state, settings, run, best_run, sizes) :
         run_stb_method(*stb_state, settings, run, best_run, sizes);
@@ -547,8 +562,9 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
           !optimize_run_settings(state, settings, *best_run))
         break;
     }
-    if (best_run && (!total_best_run || is_better_than(*best_run, *total_best_run)))
+    if (best_run && (!total_best_run || is_better_than(*best_run, *total_best_run))) {
       total_best_run = std::move(best_run);
+    }
   }
 
   if (!total_best_run)
