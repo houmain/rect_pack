@@ -1,6 +1,6 @@
 # Multi-sheet rectangle packing
 
-A library for packing rectangles to one or more sprite sheets/atlases with optional constraints.
+A C++17 library for packing rectangles to one or more sprite sheets/atlases with optional constraints.
 
 It is part of the [spright](https://github.com/houmain/spright) project and utilizing [Sean T. Barrett's Skyline](https://github.com/nothings/stb) and  [Jukka Jylänki's MaxRects](https://github.com/juj/RectangleBinPack) packing algorithm implementations.
 

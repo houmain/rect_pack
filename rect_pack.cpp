@@ -570,7 +570,8 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
   if (!total_best_run)
     return { };
 
-  if (settings.max_sheets && std::cmp_less(settings.max_sheets, total_best_run->sheets.size()))
+  if (settings.max_sheets &&
+      settings.max_sheets < static_cast<int>(total_best_run->sheets.size()))
     total_best_run->sheets.resize(static_cast<size_t>(settings.max_sheets));
 
   return std::move(total_best_run->sheets);
