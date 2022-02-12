@@ -538,11 +538,11 @@ std::vector<Sheet> pack(Settings settings, std::vector<Size> sizes) {
   for (const auto& method : methods) {
     auto best_run = std::optional<Run>{ };
     auto state = OptimizationState{
-      .perfect_area = perfect_area,
-      .width = initial_width,
-      .height = initial_height,
-      .stage = OptimizationStage::first_run,
-      .iteration = 0,
+      perfect_area,
+      initial_width,
+      initial_height,
+      OptimizationStage::first_run,
+      0,
     };
     for (;;) {
       if (best_run.has_value() &&
