@@ -411,6 +411,11 @@ namespace {
       apply_padding(settings, width, height, false);
       auto& sheet = run.sheets.emplace_back(Sheet{ width, height, { } });
 
+      // cancel when not making any progress
+      if (rbp.rects.empty())
+        return false;
+
+      // cancel when already worse than best run
       const auto done = rbp.run_rect_sizes.empty();
       if (best_run && !is_better_than(run, *best_run, !done)) {
         cancelled = true;
