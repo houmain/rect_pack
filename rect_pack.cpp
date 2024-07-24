@@ -114,14 +114,18 @@ namespace {
   }
 
   bool correct_settings(Settings& settings, std::vector<Size>& sizes) {
-    // clamp min and max (not to numeric_limits<int>::max() to prevent overflow)
+    // clamp max to far less than numeric_limits<int>::max() to prevent overflow
     const auto size_limit = 1'000'000'000;
     if (settings.max_width <= 0 || settings.max_width > size_limit)
       settings.max_width = size_limit;
     if (settings.max_height <= 0 || settings.max_height > size_limit)
       settings.max_height = size_limit;
-    settings.min_width = std::clamp(settings.min_width, 0, settings.max_width);
-    settings.min_height = std::clamp(settings.min_height, 0, settings.max_height);
+
+    if (settings.min_width < 0 ||
+        settings.min_height < 0 ||
+        settings.min_width > settings.max_width ||
+        settings.min_height > settings.max_height)
+      return false;
 
     // immediately apply padding and over allocation, only relevant for power-of-two and alignment constraint
     apply_padding(settings, settings.min_width, settings.min_height, true);
@@ -136,7 +140,10 @@ namespace {
         it = sizes.erase(it);
       }
       else {
-        if (settings.allow_rotate && it->height > it->width) {
+        if (settings.allow_rotate && 
+            it->height > it->width && 
+            it->height <= settings.max_width &&
+            it->width <= settings.max_height) {
           max_rect_width = std::max(max_rect_width, it->height);
           max_rect_height = std::max(max_rect_height, it->width);
         }
@@ -149,6 +156,10 @@ namespace {
 
     settings.min_width = std::max(settings.min_width, max_rect_width);
     settings.min_height = std::max(settings.min_height, max_rect_height);
+
+    // clamp min to max and still pack the sprites which fit
+    settings.min_width = std::min(settings.min_width, settings.max_width);
+    settings.min_height = std::min(settings.min_height, settings.max_height);
     return true;
   }
 
